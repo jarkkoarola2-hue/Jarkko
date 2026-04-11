@@ -578,3 +578,16 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+print("TESTI: lähetetään WhatsApp viesti")
+
+import os
+from twilio.rest import Client
+
+if os.getenv("ENABLE_WHATSAPP") == "true":
+    client = Client(os.getenv("TWILIO_SID"), os.getenv("TWILIO_AUTH"))
+    
+    client.messages.create(
+        body="TESTI OK ✅ Genelec vahti toimii!",
+        from_=os.getenv("WHATSAPP_FROM"),
+        to=os.getenv("WHATSAPP_TO")
+    )
