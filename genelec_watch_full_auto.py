@@ -577,7 +577,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+
 print("TESTI: lähetetään WhatsApp viesti")
 
 from twilio.rest import Client
@@ -593,3 +593,4 @@ if os.getenv("ENABLE_WHATSAPP") == "true":
     )
     
     print("WhatsApp viesti lähetetty:", message.sid)
+    sys.exit(main())
