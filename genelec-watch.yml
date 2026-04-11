@@ -2,24 +2,16 @@ name: Genelec Watch
 
 on:
   schedule:
-    - cron: '*/30 * * * *'
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
-concurrency:
-  group: genelec-watch
-  cancel-in-progress: false
-
 jobs:
-  watch:
+  run-script:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -27,39 +19,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements_genelec_watch_full_auto.txt
+        run: pip install -r requirements_genelec_watch_full_auto.txt
 
-      - name: Run Genelec watcher
-        env:
-          ENABLE_WHATSAPP: ${{ secrets.ENABLE_WHATSAPP }}
-          TWILIO_SID: ${{ secrets.TWILIO_SID }}
-          TWILIO_AUTH: ${{ secrets.TWILIO_AUTH }}
-          WHATSAPP_FROM: ${{ secrets.WHATSAPP_FROM }}
-          WHATSAPP_TO: ${{ secrets.WHATSAPP_TO }}
-          ENABLE_DISCORD: ${{ secrets.ENABLE_DISCORD }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
-          SMTP_HOST: ${{ secrets.SMTP_HOST }}
-          SMTP_PORT: ${{ secrets.SMTP_PORT }}
-          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-          EMAIL_TO: ${{ secrets.EMAIL_TO }}
-          ENABLE_TORI: ${{ secrets.ENABLE_TORI }}
-          STATE_FILE: seen_genelec_items.json
-        run: |
-          python genelec_watch_full_auto.py --once --log-level INFO
-
-      - name: Commit updated seen state
-        run: |
-          if git diff --quiet -- seen_genelec_items.json; then
-            echo "No state changes to commit."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add seen_genelec_items.json
-          git commit -m "Update Genelec watch state [skip ci]"
-          git push
+      - name: Run script
+        run: python genelec_watch_full_auto.py
