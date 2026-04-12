@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
-import argparse
 import json
 import os
 import re
@@ -185,6 +184,22 @@ def parse_reverb(keywords: List[str]) -> List[Item]:
     return dedupe(items)
 
 
+def parse_tori(keywords: List[str]) -> List[Item]:
+    url = "https://www.tori.fi/recommerce/forsale/search?query=genelec"
+    items: List[Item] = []
+    try:
+        soup = BeautifulSoup(http_get(url), "html.parser")
+        for a in soup.select("a[href*='/recommerce/forsale/item/'], a[href*='/item/']"):
+            title = clean_text(a.get_text(" ", strip=True))
+            href = a.get("href", "")
+            full = urljoin("https://www.tori.fi", href)
+            if title and match_keywords(title, keywords):
+                items.append(Item("tori.fi", title, full))
+    except Exception as exc:
+        print(f"[WARN] tori.fi failed: {exc}")
+    return dedupe(items)
+
+
 def collect_items(keywords: List[str]) -> List[Item]:
     all_items: List[Item] = []
     for fn in [
@@ -194,18 +209,14 @@ def collect_items(keywords: List[str]) -> List[Item]:
         parse_muusikoiden,
         parse_ebay,
         parse_reverb,
+        parse_tori,
     ]:
         all_items.extend(fn(keywords))
     return dedupe(all_items)
 
 
 def send_email(subject: str, body: str) -> None:
-    print("[DEBUG] send_email() started")
-
-    enable_email = os.getenv("ENABLE_EMAIL", "false").lower()
-    print(f"[DEBUG] ENABLE_EMAIL={enable_email}")
-
-    if enable_email != "true":
+    if os.getenv("ENABLE_EMAIL", "false").lower() != "true":
         print("[INFO] Email notifications disabled.")
         return
 
@@ -215,13 +226,6 @@ def send_email(subject: str, body: str) -> None:
     smtp_password = os.getenv("SMTP_PASSWORD")
     email_from = os.getenv("EMAIL_FROM")
     email_to = os.getenv("EMAIL_TO")
-
-    print(f"[DEBUG] SMTP_HOST={smtp_host}")
-    print(f"[DEBUG] SMTP_PORT={smtp_port_raw}")
-    print(f"[DEBUG] SMTP_USERNAME exists={bool(smtp_username)}")
-    print(f"[DEBUG] SMTP_PASSWORD exists={bool(smtp_password)}")
-    print(f"[DEBUG] EMAIL_FROM exists={bool(email_from)}")
-    print(f"[DEBUG] EMAIL_TO exists={bool(email_to)}")
 
     missing = [
         name
@@ -253,17 +257,13 @@ def send_email(subject: str, body: str) -> None:
 
     try:
         context = ssl.create_default_context()
-        print("[DEBUG] Opening SMTP connection...")
         with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-            print("[DEBUG] SMTP connected")
             server.ehlo()
             server.starttls(context=context)
-            print("[DEBUG] STARTTLS ok")
             server.ehlo()
             server.login(smtp_username, smtp_password)
-            print("[DEBUG] SMTP login ok")
             server.send_message(msg)
-            print("[INFO] Email sent successfully.")
+        print("[INFO] Email sent successfully.")
     except Exception as exc:
         print(f"[ERROR] Email sending failed: {repr(exc)}")
         raise
@@ -281,21 +281,8 @@ def format_email(items: List[Item]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--keywords", nargs="*", default=DEFAULT_KEYWORDS)
-    parser.add_argument("--send-test-email", action="store_true")
-    args = parser.parse_args()
-
-    if args.send_test_email:
-        print("[INFO] Running test email mode")
-        send_email(
-            subject="TESTI OK - Genelec vahti toimii",
-            body="Tämä on testiviesti. Jos näet tämän, sähköposti-ilmoitukset toimivat.",
-        )
-        return 0
-
     seen = load_seen()
-    items = collect_items(args.keywords)
+    items = collect_items(DEFAULT_KEYWORDS)
 
     print(f"[INFO] Found {len(items)} total matching items.")
     for item in items[:20]:
