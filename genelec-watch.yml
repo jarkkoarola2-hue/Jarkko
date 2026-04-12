@@ -9,15 +9,6 @@ jobs:
   run-script:
     runs-on: ubuntu-latest
 
-    env:
-      ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
-      SMTP_HOST: ${{ secrets.SMTP_HOST }}
-      SMTP_PORT: ${{ secrets.SMTP_PORT }}
-      SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
-      SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
-      EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
-      EMAIL_TO: ${{ secrets.EMAIL_TO }}
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -25,10 +16,18 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: "3.11"
 
       - name: Install dependencies
         run: pip install -r requirements_genelec_watch_full_auto.txt
 
       - name: Run script
+        env:
+          ENABLE_EMAIL: ${{ secrets.ENABLE_EMAIL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
         run: python genelec_watch_full_auto.py --send-test-email
