@@ -40,15 +40,19 @@ def load_seen() -> set[str]:
     try:
         data = json.loads(SEEN_FILE.read_text(encoding="utf-8"))
         return set(data.get("seen", []))
-    except Exception:
+    except Exception as exc:
+        print(f"[WARN] Could not read seen file: {exc}")
         return set()
 
 
 def save_seen(seen: set[str]) -> None:
-    SEEN_FILE.write_text(
-        json.dumps({"seen": sorted(seen)}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
+    try:
+        SEEN_FILE.write_text(
+            json.dumps({"seen": sorted(seen)}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        print(f"[WARN] Could not save seen file: {exc}")
 
 
 def http_get(url: str) -> str:
@@ -196,21 +200,34 @@ def collect_items(keywords: List[str]) -> List[Item]:
 
 
 def send_email(subject: str, body: str) -> None:
-    if os.getenv("ENABLE_EMAIL", "false").lower() != "true":
+    print("[DEBUG] send_email() started")
+
+    enable_email = os.getenv("ENABLE_EMAIL", "false").lower()
+    print(f"[DEBUG] ENABLE_EMAIL={enable_email}")
+
+    if enable_email != "true":
         print("[INFO] Email notifications disabled.")
         return
 
     smtp_host = os.getenv("SMTP_HOST")
-    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_port_raw = os.getenv("SMTP_PORT", "587")
     smtp_username = os.getenv("SMTP_USERNAME")
     smtp_password = os.getenv("SMTP_PASSWORD")
     email_from = os.getenv("EMAIL_FROM")
     email_to = os.getenv("EMAIL_TO")
 
+    print(f"[DEBUG] SMTP_HOST={smtp_host}")
+    print(f"[DEBUG] SMTP_PORT={smtp_port_raw}")
+    print(f"[DEBUG] SMTP_USERNAME exists={bool(smtp_username)}")
+    print(f"[DEBUG] SMTP_PASSWORD exists={bool(smtp_password)}")
+    print(f"[DEBUG] EMAIL_FROM exists={bool(email_from)}")
+    print(f"[DEBUG] EMAIL_TO exists={bool(email_to)}")
+
     missing = [
         name
         for name, value in {
             "SMTP_HOST": smtp_host,
+            "SMTP_PORT": smtp_port_raw,
             "SMTP_USERNAME": smtp_username,
             "SMTP_PASSWORD": smtp_password,
             "EMAIL_FROM": email_from,
@@ -222,19 +239,34 @@ def send_email(subject: str, body: str) -> None:
         print(f"[WARN] Missing email settings: {', '.join(missing)}")
         return
 
+    try:
+        smtp_port = int(smtp_port_raw)
+    except ValueError:
+        print(f"[ERROR] SMTP_PORT is not a number: {smtp_port_raw}")
+        return
+
     msg = EmailMessage()
     msg["Subject"] = subject
     msg["From"] = email_from
     msg["To"] = email_to
     msg.set_content(body)
 
-    context = ssl.create_default_context()
-    with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
-        server.starttls(context=context)
-        server.login(smtp_username, smtp_password)
-        server.send_message(msg)
-
-    print("[INFO] Email sent successfully.")
+    try:
+        context = ssl.create_default_context()
+        print("[DEBUG] Opening SMTP connection...")
+        with smtplib.SMTP(smtp_host, smtp_port, timeout=30) as server:
+            print("[DEBUG] SMTP connected")
+            server.ehlo()
+            server.starttls(context=context)
+            print("[DEBUG] STARTTLS ok")
+            server.ehlo()
+            server.login(smtp_username, smtp_password)
+            print("[DEBUG] SMTP login ok")
+            server.send_message(msg)
+            print("[INFO] Email sent successfully.")
+    except Exception as exc:
+        print(f"[ERROR] Email sending failed: {repr(exc)}")
+        raise
 
 
 def format_email(items: List[Item]) -> str:
@@ -255,6 +287,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.send_test_email:
+        print("[INFO] Running test email mode")
         send_email(
             subject="TESTI OK - Genelec vahti toimii",
             body="Tämä on testiviesti. Jos näet tämän, sähköposti-ilmoitukset toimivat.",
