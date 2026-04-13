@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from email.message import EmailMessage
 from pathlib import Path
 from typing import Iterable, List, Optional
-from urllib.parse import urljoin
+from urllib.parse import quote_plus, urljoin
 
 import requests
 from bs4 import BeautifulSoup
@@ -185,18 +185,43 @@ def parse_reverb(keywords: List[str]) -> List[Item]:
 
 
 def parse_tori(keywords: List[str]) -> List[Item]:
-    url = "https://www.tori.fi/recommerce/forsale/search?query=genelec"
+    search_terms = [
+        "genelec",
+        "genelec 8010",
+        "genelec 8020",
+        "genelec 8030",
+        "genelec 8040",
+        "genelec 8050",
+        "genelec g one",
+        "genelec g two",
+        "genelec kaiutin",
+    ]
+
     items: List[Item] = []
+
     try:
-        soup = BeautifulSoup(http_get(url), "html.parser")
-        for a in soup.select("a[href*='/recommerce/forsale/item/'], a[href*='/item/']"):
-            title = clean_text(a.get_text(" ", strip=True))
-            href = a.get("href", "")
-            full = urljoin("https://www.tori.fi", href)
-            if title and match_keywords(title, keywords):
+        for term in search_terms:
+            url = (
+                "https://www.tori.fi/recommerce/forsale/search"
+                f"?q={quote_plus(term)}&trade_type=1"
+            )
+            soup = BeautifulSoup(http_get(url), "html.parser")
+
+            for a in soup.select("a[href*='/recommerce/forsale/item/'], a[href*='/item/']"):
+                href = a.get("href", "")
+                title = clean_text(a.get_text(" ", strip=True))
+                full = urljoin("https://www.tori.fi", href)
+
+                if not href or not title:
+                    continue
+                if not match_keywords(title, keywords):
+                    continue
+
                 items.append(Item("tori.fi", title, full))
+
     except Exception as exc:
         print(f"[WARN] tori.fi failed: {exc}")
+
     return dedupe(items)
 
 
