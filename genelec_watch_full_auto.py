@@ -54,7 +54,7 @@ def save_seen(seen: set[str]) -> None:
         print(f"[WARN] Could not save seen file: {exc}")
 
 
-def http_get(url: str) -> str:
+def http_get(url: str, *, accept: str | None = None) -> str:
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (X11; Linux x86_64) "
@@ -62,9 +62,25 @@ def http_get(url: str) -> str:
             "Chrome/124.0 Safari/537.36"
         )
     }
+    if accept:
+        headers["Accept"] = accept
     response = requests.get(url, headers=headers, timeout=DEFAULT_TIMEOUT)
     response.raise_for_status()
     return response.text
+
+
+def http_get_json(url: str, params: dict | None = None) -> dict:
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (X11; Linux x86_64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0 Safari/537.36"
+        ),
+        "Accept": "application/json",
+    }
+    response = requests.get(url, headers=headers, params=params, timeout=DEFAULT_TIMEOUT)
+    response.raise_for_status()
+    return response.json()
 
 
 def clean_text(text: str) -> str:
@@ -102,51 +118,56 @@ def parse_huutokaupat(keywords: List[str]) -> List[Item]:
     return dedupe(items)
 
 
-def parse_huuto(keywords: List[str]) -> List[Item]:
-    url = "https://www.huuto.net/haku/sana/genelec"
+def parse_huuto_api(keywords: List[str]) -> List[Item]:
+    """
+    Huuto.net JSON API:
+    GET https://api.huuto.net/1.1/items?words=genelec&status=open&sort=newest&limit=50
+    """
+    api_url = "https://api.huuto.net/1.1/items"
     items: List[Item] = []
+
+    # Haetaan muutamalla termillä, jotta saadaan paremmin mallikohtaisia osumia.
+    search_terms = [
+        "genelec",
+        "genelec 8010",
+        "genelec 8020",
+        "genelec 8030",
+        "genelec 8040",
+        "genelec 8050",
+        "genelec g one",
+        "genelec g two",
+        "genelec subwoofer",
+    ]
+
     try:
-        soup = BeautifulSoup(http_get(url), "html.parser")
-        for a in soup.select("a[href*='/kohteet/'], a[href*='/tuote/'], a[href*='/kohde/']"):
-            title = clean_text(a.get_text(" ", strip=True))
-            href = a.get("href", "")
-            full = urljoin("https://www.huuto.net", href)
-            if title and match_keywords(title, keywords):
-                items.append(Item("huuto.net", title, full))
+        for term in search_terms:
+            params = {
+                "words": term,
+                "status": "open",
+                "sort": "newest",
+                "limit": 50,
+                "page": 1,
+            }
+            data = http_get_json(api_url, params=params)
+
+            for raw in data.get("items", []):
+                title = clean_text(raw.get("title", ""))
+                links = raw.get("links", {}) or {}
+                url = links.get("alternative") or links.get("self") or ""
+                if not title or not url:
+                    continue
+                if not match_keywords(title, keywords):
+                    continue
+
+                price = None
+                if raw.get("currentPrice") is not None:
+                    price = str(raw.get("currentPrice"))
+
+                items.append(Item("huuto.net", title, url, price=price))
+
     except Exception as exc:
-        print(f"[WARN] huuto.net failed: {exc}")
-    return dedupe(items)
+        print(f"[WARN] huuto.net api failed: {exc}")
 
-
-def parse_hifiharrastajat(keywords: List[str]) -> List[Item]:
-    url = "https://foorumi.hifiharrastajat.org/index.php?search/search&keywords=genelec"
-    items: List[Item] = []
-    try:
-        soup = BeautifulSoup(http_get(url), "html.parser")
-        for a in soup.select("a[href*='/threads/'], a[href*='/posts/']"):
-            title = clean_text(a.get_text(" ", strip=True))
-            href = a.get("href", "")
-            full = urljoin("https://foorumi.hifiharrastajat.org", href)
-            if title and match_keywords(title, keywords):
-                items.append(Item("foorumi.hifiharrastajat.org", title, full))
-    except Exception as exc:
-        print(f"[WARN] hifiharrastajat failed: {exc}")
-    return dedupe(items)
-
-
-def parse_muusikoiden(keywords: List[str]) -> List[Item]:
-    url = "https://muusikoiden.net/tori/?keyword=genelec"
-    items: List[Item] = []
-    try:
-        soup = BeautifulSoup(http_get(url), "html.parser")
-        for a in soup.select("a[href*='tori/ilmoitus/'], a[href*='/tori/']"):
-            title = clean_text(a.get_text(" ", strip=True))
-            href = a.get("href", "")
-            full = urljoin("https://muusikoiden.net", href)
-            if title and match_keywords(title, keywords):
-                items.append(Item("muusikoiden.net", title, full))
-    except Exception as exc:
-        print(f"[WARN] muusikoiden.net failed: {exc}")
     return dedupe(items)
 
 
@@ -229,9 +250,7 @@ def collect_items(keywords: List[str]) -> List[Item]:
     all_items: List[Item] = []
     for fn in [
         parse_huutokaupat,
-        parse_huuto,
-        parse_hifiharrastajat,
-        parse_muusikoiden,
+        parse_huuto_api,
         parse_ebay,
         parse_reverb,
         parse_tori,
